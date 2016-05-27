@@ -28,6 +28,9 @@ fn main() {
 	let mut mainloop = gst::MainLoop::new();
 	let mut bus = pipeline.bus().expect("Couldn't get bus from pipeline");
 	let bus_receiver = bus.receiver();
+
+    let mut silent = true;
+
 	mainloop.spawn();
 	pipeline.play();
 	for message in bus_receiver.iter(){
@@ -64,7 +67,14 @@ fn main() {
                     Some(the_name) => {
                         match &*the_name {
                             "level" => {
-                                println!("got level: rms = {}", rms);
+                                //println!("got level: rms = {}", rms);
+                                if rms > -60f64 && silent {
+                                    println!("not silent! {}", rms);
+                                    silent = false;
+                                } else if rms < -65f64 && !silent {
+                                    println!("silent! {}", rms);
+                                    silent = true;
+                                }
                             }
                             _ => {
                                 println!("got unknown structure name {}", the_name);
