@@ -6,6 +6,7 @@ dependencies = [
  "gobject-sys 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gstreamer 0.4.0",
  "gtk 0.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.4.15 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -189,6 +190,11 @@ dependencies = [
  "pango-sys 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pkg-config 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "itertools"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "libc"

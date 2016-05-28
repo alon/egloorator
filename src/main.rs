@@ -2,11 +2,16 @@ extern crate argparse;
 extern crate gst;
 extern crate gtk;
 extern crate gobject_sys;
+extern crate itertools;
 
-use argparse::ArgumentParser;
+use std::process::Command;
 use std::ffi::{CStr, CString};
-use gst::ElementT;
 use std::env;
+use std::thread;
+
+use itertools::Zip;
+use argparse::ArgumentParser;
+use gst::ElementT;
 use gtk::prelude::*;
 use gobject_sys::{g_value_get_boxed, g_value_array_get_nth, g_value_get_double}; // TODO: use wrappers provided by gtk-rs and friends
 
@@ -165,30 +170,74 @@ fn parse_args() -> (String, String, String)
 }
 
 
-fn main() {
-    let (monitor_device, source_device, sink_device) = parse_args();
-    let level_pipeline_str = format!("pulsesrc device={} ! level ! fakesink", monitor_device);
-    let simplex_pipeline_str = format!("pulsesrc device={} ! pulsesink device={}", source_device, sink_device);
+// run a subprocess and provide it's output back as a String
+fn check_output(cmd: &str, arguments: Vec<&str>) -> String
+{
+    let mut p = std::process::Command::new(cmd);
+    for arg in arguments.iter() {
+        p.arg(arg);
+    }
+    let output = p.output().unwrap();
+    String::from_utf8_lossy(
+        if output.status.success() {
+            &output.stdout
+        } else {
+            &output.stderr
+        }
+    ).into_owned()
+}
 
-    gst::init();
 
-    let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
-	let mut mainloop = gst::MainLoop::new();
+fn get_sources() -> Vec<String>
+{
+    // would be nice to have list comprehensions
+    let mut out = Vec::<String>::new();
+    for l in check_output("pactl", vec!["list", "short", "sources"]).split("\n") {
+        let v = l.split("\t").collect::<Vec<&str>>();
+        let n = v.len();
+        if n < 2 {
+            continue;
+        }
+        let source = String::from(v[1]);
+        if source.contains("monitor") || !source.contains("usb") {
+            continue;
+        }
+        out.push(source);
+    }
+    out
+}
+
+
+
+fn get_sinks() -> Vec<String>
+{
+    // would be nice to have list comprehensions
+    let mut out = Vec::<String>::new();
+    for l in check_output("pactl", vec!["list", "short", "sinks"]).split("\n") {
+        let v = l.split("\t").collect::<Vec<&str>>();
+        let n = v.len();
+        if n < 2 {
+            continue;
+        }
+        let sink = String::from(v[1]);
+        if sink.contains("monitor") || !sink.contains("usb") {
+            continue;
+        }
+        out.push(sink);
+    }
+    out
+}
+
+// TODO: duplex
+fn one_to_one(level_pipeline: &mut gst::Pipeline, simplex_pipeline: &mut gst::Pipeline)
+{
+    let mut prev = true;
+    let mut silence = Silence::new(-70f64, -65f64, 10, 5);
 	let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
 	let level_bus_receiver = level_bus.receiver();
 
-	mainloop.spawn();
-	level_pipeline.play();
-
-    // Do I need to drain messages from the simplex bus? how do I do that without blocking on two buses?
-
-    let mut simplex_pipeline = gst::Pipeline::new_from_str(&simplex_pipeline_str).unwrap();
-
-    let mut prev = true;
-    let mut silence = Silence::new(-70f64, -65f64, 10, 5);
-
-	for message in level_bus_receiver.iter(){
-		match message.parse(){
+	for message in level_bus_receiver.iter() {
+		match message.parse() {
 			gst::Message::StateChangedParsed{ref msg, ref old, ref new, ref pending} => {
 				println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
 			}
@@ -236,5 +285,66 @@ fn main() {
 			}
 		}
 	}
+}
+
+
+fn main() {
+    let sources = get_sources();
+    let mut sinks = Vec::<String>::new();
+    for source in &sources {
+        sinks.push(source.replace("input", "output"));
+    }
+    // compile error: map(|s: String| s.replace("input", "output"));
+    println!("sources:");
+    for source in &sources {
+        println!("{}", source);
+    }
+
+    println!("sinks:");
+    for sink in &sinks {
+        println!("{}", sink);
+    }
+
+    fn make_level_pipeline(source: &String) -> String {
+        format!("pulsesrc device={} ! level ! fakesink", source)
+    }
+
+    fn make_simplex_pipeline(source: &String, sink: &String) -> String {
+        format!("pulsesrc device={} ! pulsesink device={}", source, sink)
+    }
+
+    let (monitor_device, source_device, sink_device) = parse_args();
+    let level_pipelines_str: Vec<String> = sources.iter().map(make_level_pipeline).collect();
+    let simplex_pipelines_str: Vec<String> = sources.iter().zip(sinks.iter()).map(|(a, b)| make_simplex_pipeline(a, b)).collect();
+
+    gst::init();
+
+	let mut mainloop = gst::MainLoop::new();
+
+	mainloop.spawn();
+
+    // Do I need to drain messages from the simplex bus? how do I do that without blocking on two buses?
+
+    let mut i: usize = 0;
+    let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
+
+    for level_pipeline_str in level_pipelines_str {
+        let simplex_pipeline_str: String = simplex_pipelines_str[i].clone();
+        let handle = thread::spawn(move || {
+            let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
+            let mut simplex_pipeline = gst::Pipeline::new_from_str(&*simplex_pipeline_str).unwrap();
+            level_pipeline.play();
+            one_to_one(&mut level_pipeline, &mut simplex_pipeline);
+        });
+        i += 1;
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("done");
+
 	mainloop.quit();
 }
