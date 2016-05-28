@@ -1,7 +1,9 @@
+extern crate argparse;
 extern crate gst;
 extern crate gtk;
 extern crate gobject_sys;
 
+use argparse::ArgumentParser;
 use std::ffi::{CStr, CString};
 use gst::ElementT;
 use std::env;
@@ -156,22 +158,36 @@ mod tests {
 }
 
 
+fn parse_args() -> (String, String, String)
+{
+    let args = env::args().collect::<Vec<String>>();
+    (args[1].clone(), args[2].clone(), args[3].clone())
+}
+
+
 fn main() {
+    let (monitor_device, source_device, sink_device) = parse_args();
+    let level_pipeline_str = format!("pulsesrc device={} ! level ! fakesink", monitor_device);
+    let simplex_pipeline_str = format!("pulsesrc device={} ! pulsesink device={}", source_device, sink_device);
+
     gst::init();
-    let device = env::args().collect::<Vec<String>>()[1..].join(" ");
-    let pipeline_str = format!("pulsesrc device={} ! level ! fakesink", device);
-    let mut pipeline = gst::Pipeline::new_from_str(&pipeline_str).unwrap(); // format?
+
+    let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
 	let mut mainloop = gst::MainLoop::new();
-	let mut bus = pipeline.bus().expect("Couldn't get bus from pipeline");
-	let bus_receiver = bus.receiver();
+	let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
+	let level_bus_receiver = level_bus.receiver();
 
 	mainloop.spawn();
-	pipeline.play();
+	level_pipeline.play();
+
+    // Do I need to drain messages from the simplex bus? how do I do that without blocking on two buses?
+
+    let mut simplex_pipeline = gst::Pipeline::new_from_str(&simplex_pipeline_str).unwrap();
 
     let mut prev = true;
     let mut silence = Silence::new(-70f64, -65f64, 10, 5);
 
-	for message in bus_receiver.iter(){
+	for message in level_bus_receiver.iter(){
 		match message.parse(){
 			gst::Message::StateChangedParsed{ref msg, ref old, ref new, ref pending} => {
 				println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
@@ -195,8 +211,14 @@ fn main() {
                                 silence = silence.input(rms);
                                 let output = silence.output();
                                 match (output, output != prev) {
-                                    (true, true) => println!("it became silent! output = {} prev = {}, {}", output, prev, rms),
-                                    (false, true) => println!("it became active! {}", rms),
+                                    (true, true) => {
+                                        println!("it became silent! output = {} prev = {}, {}", output, prev, rms);
+                                        simplex_pipeline.pause();
+                                    },
+                                    (false, true) => {
+                                        println!("it became active! {}", rms);
+                                        simplex_pipeline.play();
+                                    },
                                     (false, false) => println!("still active, {}, silent time of {}", rms, silence.silent_current),
                                     (true, false) => println!("still silent"),
                                 }

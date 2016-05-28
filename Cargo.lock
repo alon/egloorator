@@ -2,10 +2,16 @@
 name = "egloorator"
 version = "0.1.0"
 dependencies = [
+ "argparse 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "gobject-sys 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gstreamer 0.4.0",
  "gtk 0.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "argparse"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "atk-sys"

@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Alon Levy <alon@pobox.com>"]
 
 [dependencies]
+argparse = "0.2.1"
 gstreamer = { path = "/home/alon/midburn-egloo/gstreamer1.0-rs/" }
 gtk = "0.0.7"
 gobject-sys = "0.3.0"
