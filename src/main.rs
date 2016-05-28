@@ -11,6 +11,7 @@ use gobject_sys::{g_value_get_boxed, g_value_array_get_nth, g_value_get_double};
 
 // Helpers that should go into gstreamer1.0-rs
 
+
 fn gst_structure_get_double(st: &gst::ffi::GstStructure, name: &str) -> f64 {
     unsafe {
         let gst_array_val = gst::ffi::gst_structure_get_value(st, CString::new(name).unwrap().as_ptr());
@@ -20,6 +21,7 @@ fn gst_structure_get_double(st: &gst::ffi::GstStructure, name: &str) -> f64 {
         g_value_get_double(v)
     }
 }
+
 
 fn gst_message_get_name(message: &gst::Message) -> Option<String>
 {
@@ -34,6 +36,7 @@ fn gst_message_get_name(message: &gst::Message) -> Option<String>
     }
 }
 
+
 fn gst_message_get_double(message: &gst::Message, key: &str) -> f64
 {
     unsafe {
@@ -42,9 +45,9 @@ fn gst_message_get_double(message: &gst::Message, key: &str) -> f64
     }
 }
 
+
 // Level logic by itself
 
-const SILENCE_AVG : i64 = 5;
 
 struct Silence {
     // output
@@ -52,61 +55,102 @@ struct Silence {
 
     // state changes per sample
     avg_rms: f64, // running average computation
-    silent_period: i64, // time there has been silence
+    silent_current: i64, // time there has been silence
 
     // parameters (constant since construction)
-    samples_to_become_silent: i64,
+    silent_period: i64,
     become_silent_threshold: f64,
     become_active_threshold: f64, // hysteresis needs these two to be different
+    average_period: i64,
 
     // debug
     cycle: i64
 }
 
+
 impl Silence {
-    fn new(silent_threshold: f64, active_threshold: f64, samples: i64) -> Silence {
+
+    fn new(silent_threshold: f64, active_threshold: f64, silent_period: i64, average_period: i64) -> Silence {
         Silence {
             become_active_threshold: active_threshold,
             become_silent_threshold: silent_threshold,
-            samples_to_become_silent: samples,
+            silent_period: silent_period,
+            average_period: average_period,
             silent: true,
             avg_rms: 0.0f64,
-            silent_period: 0,
+            silent_current: 0,
 
             // debug
             cycle: 0,
         }
     }
+
     fn input(&self, rms: f64) -> Silence {
-        let silence_avg_f64 = SILENCE_AVG as f64;
-        let silence_avg_minus_1_f64 = (SILENCE_AVG - 1) as f64;
+        let silence_avg_f64 = self.average_period as f64;
+        let silence_avg_minus_1_f64 = (self.average_period - 1) as f64;
         let avg_rms = rms / silence_avg_f64 + silence_avg_minus_1_f64 / silence_avg_f64 * self.avg_rms;
+        println!("avg_rms {}", avg_rms);
         let is_silence = match self.silent {
-            true => self.avg_rms > self.become_active_threshold,
+            true => self.avg_rms >= self.become_active_threshold,
             false => self.avg_rms < self.become_silent_threshold
         };
-        let silent_period = match is_silence {
-            true => self.silent_period + 1,
+        let silent_current = match is_silence {
+            true => self.silent_current + 1,
             false => 0
         };
         let silent = match self.silent {
             true => is_silence,
-            false => !is_silence && self.silent_period >= self.samples_to_become_silent
+            false => !is_silence && self.silent_current >= self.silent_period
         };
         Silence {
             avg_rms: avg_rms,
-            silent_period: silent_period,
+            silent_current: silent_current,
             silent : silent,
             cycle : self.cycle + 1,
             .. *self
         }
     }
+
     fn output(&self) -> bool {
         self.silent
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::Silence;
 
+    const LIMIT_TALK: f64 = 2.0f64;
+    const LIMIT_SILENCE: f64 = 1.0f64;
+    const SILENCE_COUNT: i64 = 2;
+
+    #[test]
+    fn test_silence() -> ()
+    {
+        for (i, o) in vec![
+            (vec![], vec![]),
+            (vec![LIMIT_TALK - 0.01], vec![true]),
+            (vec![LIMIT_TALK], vec![false]),
+        ] {
+            test_silence_helper(i, o);
+        }
+    }
+
+    fn test_silence_helper(inp: Vec<f64>, outp: Vec<bool>) -> () {
+        let mut s = Silence::new(LIMIT_SILENCE, LIMIT_TALK, SILENCE_COUNT, 1);
+        let mut i = 0;
+
+        for (rms, expected) in inp.iter().zip(outp.iter()) {
+            s = s.input(*rms);
+            // need an assert_eq_message!
+            if s.output() != *expected {
+                println!("{:?} => {:?} failed, step {}: expected {}, got {}", inp, outp, i, *expected, s.output());
+                assert!(false)
+            }
+            i += 1;
+        }
+    }
+}
 
 
 fn main() {
@@ -122,7 +166,7 @@ fn main() {
 	pipeline.play();
 
     let mut prev = true;
-    let mut silence = Silence::new(-70f64, -65f64, 10);
+    let mut silence = Silence::new(-70f64, -65f64, 10, 5);
 
 	for message in bus_receiver.iter(){
 		match message.parse(){
@@ -146,11 +190,7 @@ fn main() {
                                 let rms = gst_message_get_double(&message, "rms");
                                 println!("{}: rms: {}", silence.cycle, rms);
                                 silence = silence.input(rms);
-                                let (silent_period, output) =
-                                {
-                                    let ref q_silence = silence;
-                                    (q_silence.silent_period, q_silence.output())
-                                };
+                                let (silent_period, output) = (silence.silent_period, silence.output());
                                 match (output, output != prev) {
                                     (true, true) => println!("it became silent! output = {} prev = {}, {}", output, prev, rms),
                                     (false, true) => println!("it became active! {}", rms),
