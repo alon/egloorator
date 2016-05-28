@@ -100,9 +100,9 @@ impl Silence {
         };
         let silent = match self.silent {
             true => is_silence,
-            false => is_silence && self.silent_current >= self.silent_period
+            false => is_silence && silent_current >= self.silent_period
         };
-        //println!("post silent: cycle {} avg_rms {} silent {} silent_current {}", self.cycle + 1, avg_rms, silent, silent_current);
+        //println!("post silent: cycle {} avg_rms {} silent {} silent_current {} | is_silence {}", self.cycle + 1, avg_rms, silent, silent_current, is_silence);
         Silence {
             avg_rms: avg_rms,
             silent_current: silent_current,
@@ -124,6 +124,7 @@ mod tests {
     const LIMIT_TALK: f64 = 2.0f64;
     const LIMIT_SILENCE: f64 = 1.0f64;
     const SILENCE_COUNT: i64 = 2;
+    const AVERAGE_COUNT: i64 = 1;
 
     #[test]
     fn test_silence() -> ()
@@ -132,13 +133,14 @@ mod tests {
             (vec![], vec![]),
             (vec![LIMIT_TALK - 0.01], vec![true]),
             (vec![LIMIT_TALK], vec![false]),
+            (vec![LIMIT_TALK, LIMIT_SILENCE - 0.01, LIMIT_SILENCE - 0.01], vec![false, false, true])
         ] {
             test_silence_helper(i, o);
         }
     }
 
     fn test_silence_helper(inp: Vec<f64>, outp: Vec<bool>) -> () {
-        let mut s = Silence::new(LIMIT_SILENCE, LIMIT_TALK, SILENCE_COUNT, 1);
+        let mut s = Silence::new(LIMIT_SILENCE, LIMIT_TALK, SILENCE_COUNT, AVERAGE_COUNT);
         let mut i = 0;
 
         for (rms, expected) in inp.iter().zip(outp.iter()) {
