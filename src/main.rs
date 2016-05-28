@@ -199,12 +199,35 @@ fn get_sources() -> Vec<String>
             continue;
         }
         let source = String::from(v[1]);
-        if source.contains("monitor") || !source.contains("usb") {
+        if source.contains("monitor") || !source.contains("usb")
+            || !source.contains("Microsoft")
+            // || source != "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo"
+            // || !source.contains("alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000")
+        {
             continue;
         }
         out.push(source);
     }
     out
+}
+
+
+// return S->A level, A->S level (larger first)
+fn get_levels(source: &String) -> (f64, f64)
+{
+    if source.contains("Logitech") {
+        return (-40f64, -41f64);
+    }
+    if source == "alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2" {
+        return (-40f64, -45f64)
+    }
+    if source == "alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono" {
+        return (-40f64, -45f64)
+    }
+    if source == "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo" {
+        return (-40f64, -45f64)
+    }
+    (-70f64, -65f64)
 }
 
 
@@ -229,12 +252,16 @@ fn get_sinks() -> Vec<String>
 }
 
 // TODO: duplex
-fn one_to_one(level_pipeline: &mut gst::Pipeline, simplex_pipeline: &mut gst::Pipeline)
+fn one_to_one(level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, simplex_pipeline: &mut gst::Pipeline)
 {
     let mut prev = true;
-    let mut silence = Silence::new(-70f64, -65f64, 10, 5);
+    let (s2a, a2s) = get_levels(&level_source);
+    let mut silence = Silence::new(s2a, a2s, 10, 5);
 	let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
 	let level_bus_receiver = level_bus.receiver();
+
+    let sine_str = format!("ladspasrc-sine-so-sine-fcac amplitude=0.02 ! pulsesink device={}", sink);
+    let mut sine_pipeline = gst::Pipeline::new_from_str(sine_str.as_ref()).unwrap();
 
 	for message in level_bus_receiver.iter() {
 		match message.parse() {
@@ -256,20 +283,22 @@ fn one_to_one(level_pipeline: &mut gst::Pipeline, simplex_pipeline: &mut gst::Pi
                         match &*the_name {
                             "level" => {
                                 let rms = gst_message_get_double(&message, "rms");
-                                println!("{}: rms: {}", silence.cycle, rms);
+                                //println!("{}: rms: {}", silence.cycle, rms);
                                 silence = silence.input(rms);
                                 let output = silence.output();
                                 match (output, output != prev) {
                                     (true, true) => {
-                                        println!("it became silent! output = {} prev = {}, {}", output, prev, rms);
+                                        println!("{}: became silent! {}", level_source, rms);
                                         simplex_pipeline.pause();
+                                        sine_pipeline.pause();
                                     },
                                     (false, true) => {
-                                        println!("it became active! {}", rms);
+                                        println!("{}: became active! {}", level_source, rms);
                                         simplex_pipeline.play();
+                                        sine_pipeline.play();
                                     },
-                                    (false, false) => println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                    (true, false) => println!("still silent"),
+                                    (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
+                                    (true, false) => {}, // println!("still silent"),
                                 }
                                 prev = output;
                             }
@@ -292,7 +321,7 @@ fn main() {
     let sources = get_sources();
     let mut sinks = Vec::<String>::new();
     for source in &sources {
-        sinks.push(source.replace("input", "output"));
+        sinks.push(source.replace("input", "output").replace("mono", "stereo"));
     }
     // compile error: map(|s: String| s.replace("input", "output"));
     println!("sources:");
@@ -313,8 +342,6 @@ fn main() {
         format!("pulsesrc device={} ! pulsesink device={}", source, sink)
     }
 
-    let (monitor_device, source_device, sink_device) = parse_args();
-    let level_pipelines_str: Vec<String> = sources.iter().map(make_level_pipeline).collect();
     let simplex_pipelines_str: Vec<String> = sources.iter().zip(sinks.iter()).map(|(a, b)| make_simplex_pipeline(a, b)).collect();
 
     gst::init();
@@ -323,18 +350,19 @@ fn main() {
 
 	mainloop.spawn();
 
-    // Do I need to drain messages from the simplex bus? how do I do that without blocking on two buses?
-
     let mut i: usize = 0;
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
-    for level_pipeline_str in level_pipelines_str {
+    for (orig_source, orig_sink) in sources.iter().zip(sinks) {
         let simplex_pipeline_str: String = simplex_pipelines_str[i].clone();
+        let source = orig_source.clone();
+        let sink = orig_sink.clone();
         let handle = thread::spawn(move || {
+            let level_pipeline_str = make_level_pipeline(&source);
             let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
             let mut simplex_pipeline = gst::Pipeline::new_from_str(&*simplex_pipeline_str).unwrap();
             level_pipeline.play();
-            one_to_one(&mut level_pipeline, &mut simplex_pipeline);
+            one_to_one(&source, &sink, &mut level_pipeline, &mut simplex_pipeline);
         });
         i += 1;
         handles.push(handle);
