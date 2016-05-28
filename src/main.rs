@@ -8,6 +8,7 @@ use std::process::Command;
 use std::ffi::{CStr, CString};
 use std::env;
 use std::thread;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
 use itertools::Zip;
 use argparse::ArgumentParser;
@@ -252,7 +253,7 @@ fn get_sinks() -> Vec<String>
 }
 
 // TODO: duplex
-fn one_to_one(level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, simplex_pipeline: &mut gst::Pipeline)
+fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<SilenceChange>)
 {
     let mut prev = true;
     let (s2a, a2s) = get_levels(&level_source);
@@ -289,13 +290,13 @@ fn one_to_one(level_source: &String, sink: &String, level_pipeline: &mut gst::Pi
                                 match (output, output != prev) {
                                     (true, true) => {
                                         println!("{}: became silent! {}", level_source, rms);
-                                        simplex_pipeline.pause();
                                         sine_pipeline.pause();
+                                        tx.send(SilenceChange{who: index, silent: true});
                                     },
                                     (false, true) => {
                                         println!("{}: became active! {}", level_source, rms);
-                                        simplex_pipeline.play();
                                         sine_pipeline.play();
+                                        tx.send(SilenceChange{who: index, silent: false});
                                     },
                                     (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
                                     (true, false) => {}, // println!("still silent"),
@@ -314,6 +315,13 @@ fn one_to_one(level_source: &String, sink: &String, level_pipeline: &mut gst::Pi
 			}
 		}
 	}
+}
+
+
+#[derive(Debug)]
+struct SilenceChange {
+    who: usize,
+    silent: bool,
 }
 
 
@@ -352,21 +360,31 @@ fn main() {
 
     let mut i: usize = 0;
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
+    let (tx, rx) = channel();
 
     for (orig_source, orig_sink) in sources.iter().zip(sinks) {
         let simplex_pipeline_str: String = simplex_pipelines_str[i].clone();
         let source = orig_source.clone();
         let sink = orig_sink.clone();
+        let tx = tx.clone();
         let handle = thread::spawn(move || {
             let level_pipeline_str = make_level_pipeline(&source);
             let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
             let mut simplex_pipeline = gst::Pipeline::new_from_str(&*simplex_pipeline_str).unwrap();
             level_pipeline.play();
-            one_to_one(&source, &sink, &mut level_pipeline, &mut simplex_pipeline);
+            watch_level(i, &source, &sink, &mut level_pipeline, &tx);
         });
         i += 1;
         handles.push(handle);
     }
+
+    let coordinator = thread::spawn(|| {
+        for msg in rx {
+            println!("got {:?}", msg);
+        }
+    });
+
+    coordinator.join().unwrap();
 
     for handle in handles {
         handle.join().unwrap();
