@@ -77,7 +77,7 @@ impl Silence {
             silent_period: silent_period,
             average_period: average_period,
             silent: true,
-            avg_rms: 0.0f64,
+            avg_rms: silent_threshold,
             silent_current: 0,
 
             // debug
@@ -86,13 +86,13 @@ impl Silence {
     }
 
     fn input(&self, rms: f64) -> Silence {
+        //println!("pre silent: cycle {} avg_rms {} silent {} silent_current {} ( S->A {}   A->S {})", self.cycle, self.avg_rms, self.silent, self.silent_current, self.become_active_threshold, self.become_silent_threshold);
         let silence_avg_f64 = self.average_period as f64;
         let silence_avg_minus_1_f64 = (self.average_period - 1) as f64;
         let avg_rms = rms / silence_avg_f64 + silence_avg_minus_1_f64 / silence_avg_f64 * self.avg_rms;
-        println!("avg_rms {}", avg_rms);
-        let is_silence = match self.silent {
-            true => self.avg_rms >= self.become_active_threshold,
-            false => self.avg_rms < self.become_silent_threshold
+        let is_silence = avg_rms < match self.silent {
+            true => self.become_active_threshold,
+            false => self.become_silent_threshold
         };
         let silent_current = match is_silence {
             true => self.silent_current + 1,
@@ -100,8 +100,9 @@ impl Silence {
         };
         let silent = match self.silent {
             true => is_silence,
-            false => !is_silence && self.silent_current >= self.silent_period
+            false => is_silence && self.silent_current >= self.silent_period
         };
+        //println!("post silent: cycle {} avg_rms {} silent {} silent_current {}", self.cycle + 1, avg_rms, silent, silent_current);
         Silence {
             avg_rms: avg_rms,
             silent_current: silent_current,
@@ -190,11 +191,11 @@ fn main() {
                                 let rms = gst_message_get_double(&message, "rms");
                                 println!("{}: rms: {}", silence.cycle, rms);
                                 silence = silence.input(rms);
-                                let (silent_period, output) = (silence.silent_period, silence.output());
+                                let output = silence.output();
                                 match (output, output != prev) {
                                     (true, true) => println!("it became silent! output = {} prev = {}, {}", output, prev, rms),
                                     (false, true) => println!("it became active! {}", rms),
-                                    (false, false) => println!("still active, {}, silent time of {}", rms, silent_period),
+                                    (false, false) => println!("still active, {}, silent time of {}", rms, silence.silent_current),
                                     (true, false) => println!("still silent"),
                                 }
                                 prev = output;
