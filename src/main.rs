@@ -185,11 +185,10 @@ fn main() {
 
 	mainloop.spawn();
 
-    let mut i: usize = 0;
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
     let (tx, rx) = channel();
 
-    for (orig_source, orig_sink) in sources.iter().zip(sinks.clone()) {
+    for (i, (orig_source, orig_sink)) in sources.iter().zip(sinks.clone()).enumerate() {
         let source = orig_source.clone();
         let sink = orig_sink.clone();
         let tx = tx.clone();
@@ -199,7 +198,6 @@ fn main() {
             level_pipeline.play();
             watch_level(i, &source, &sink, &mut level_pipeline, &tx);
         });
-        i += 1;
         handles.push(handle);
     }
 
