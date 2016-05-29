@@ -2,166 +2,20 @@ extern crate argparse;
 extern crate gst;
 extern crate gtk;
 extern crate gobject_sys;
-extern crate itertools;
 
 use std::process::Command;
-use std::ffi::{CStr, CString};
 use std::env;
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Sender};
 
-use itertools::Zip;
-use argparse::ArgumentParser;
 use gst::ElementT;
-use gtk::prelude::*;
-use gobject_sys::{g_value_get_boxed, g_value_array_get_nth, g_value_get_double}; // TODO: use wrappers provided by gtk-rs and friends
+//use argparse::ArgumentParser;
+//use gtk::prelude::*;
 
-
-// Helpers that should go into gstreamer1.0-rs
-
-
-fn gst_structure_get_double(st: &gst::ffi::GstStructure, name: &str) -> f64 {
-    unsafe {
-        let gst_array_val = gst::ffi::gst_structure_get_value(st, CString::new(name).unwrap().as_ptr());
-        let array_val = gst_array_val as *const gobject_sys::GValue;
-        let arr = g_value_get_boxed(array_val) as *mut gobject_sys::GValueArray;
-        let v = g_value_array_get_nth(arr, 0);
-        g_value_get_double(v)
-    }
-}
-
-
-fn gst_message_get_name(message: &gst::Message) -> Option<String>
-{
-    unsafe {
-        let st = message.structure();
-        if st.is_null() {
-            None
-        } else {
-            let st_name = gst::ffi::gst_structure_get_name(st);
-            Some(CStr::from_ptr(st_name).to_string_lossy().into_owned())
-        }
-    }
-}
-
-
-fn gst_message_get_double(message: &gst::Message, key: &str) -> f64
-{
-    unsafe {
-        let st = message.structure();
-        gst_structure_get_double(&*st, key)
-    }
-}
-
-
-// Level logic by itself
-
-
-struct Silence {
-    // output
-    silent: bool,
-
-    // state changes per sample
-    avg_rms: f64, // running average computation
-    silent_current: i64, // time there has been silence
-
-    // parameters (constant since construction)
-    silent_period: i64,
-    become_silent_threshold: f64,
-    become_active_threshold: f64, // hysteresis needs these two to be different
-    average_period: i64,
-
-    // debug
-    cycle: i64
-}
-
-
-impl Silence {
-
-    fn new(silent_threshold: f64, active_threshold: f64, silent_period: i64, average_period: i64) -> Silence {
-        Silence {
-            become_active_threshold: active_threshold,
-            become_silent_threshold: silent_threshold,
-            silent_period: silent_period,
-            average_period: average_period,
-            silent: true,
-            avg_rms: silent_threshold,
-            silent_current: 0,
-
-            // debug
-            cycle: 0,
-        }
-    }
-
-    fn input(&self, rms: f64) -> Silence {
-        //println!("pre silent: cycle {} avg_rms {} silent {} silent_current {} ( S->A {}   A->S {})", self.cycle, self.avg_rms, self.silent, self.silent_current, self.become_active_threshold, self.become_silent_threshold);
-        let silence_avg_f64 = self.average_period as f64;
-        let silence_avg_minus_1_f64 = (self.average_period - 1) as f64;
-        let avg_rms = rms / silence_avg_f64 + silence_avg_minus_1_f64 / silence_avg_f64 * self.avg_rms;
-        let is_silence = avg_rms < match self.silent {
-            true => self.become_active_threshold,
-            false => self.become_silent_threshold
-        };
-        let silent_current = match is_silence {
-            true => self.silent_current + 1,
-            false => 0
-        };
-        let silent = match self.silent {
-            true => is_silence,
-            false => is_silence && silent_current >= self.silent_period
-        };
-        //println!("post silent: cycle {} avg_rms {} silent {} silent_current {} | is_silence {}", self.cycle + 1, avg_rms, silent, silent_current, is_silence);
-        Silence {
-            avg_rms: avg_rms,
-            silent_current: silent_current,
-            silent : silent,
-            cycle : self.cycle + 1,
-            .. *self
-        }
-    }
-
-    fn output(&self) -> bool {
-        self.silent
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Silence;
-
-    const LIMIT_TALK: f64 = 2.0f64;
-    const LIMIT_SILENCE: f64 = 1.0f64;
-    const SILENCE_COUNT: i64 = 2;
-    const AVERAGE_COUNT: i64 = 1;
-
-    #[test]
-    fn test_silence() -> ()
-    {
-        for (i, o) in vec![
-            (vec![], vec![]),
-            (vec![LIMIT_TALK - 0.01], vec![true]),
-            (vec![LIMIT_TALK], vec![false]),
-            (vec![LIMIT_TALK, LIMIT_SILENCE - 0.01, LIMIT_SILENCE - 0.01], vec![false, false, true])
-        ] {
-            test_silence_helper(i, o);
-        }
-    }
-
-    fn test_silence_helper(inp: Vec<f64>, outp: Vec<bool>) -> () {
-        let mut s = Silence::new(LIMIT_SILENCE, LIMIT_TALK, SILENCE_COUNT, AVERAGE_COUNT);
-        let mut i = 0;
-
-        for (rms, expected) in inp.iter().zip(outp.iter()) {
-            s = s.input(*rms);
-            // need an assert_eq_message!
-            if s.output() != *expected {
-                println!("{:?} => {:?} failed, step {}: expected {}, got {}", inp, outp, i, *expected, s.output());
-                assert!(false)
-            }
-            i += 1;
-        }
-    }
-}
+mod silence;
+use silence::Silence;
+mod gst_helpers;
+use gst_helpers::{gst_message_get_double, gst_message_get_name};
 
 
 fn parse_args() -> (String, String, String)
@@ -174,7 +28,7 @@ fn parse_args() -> (String, String, String)
 // run a subprocess and provide it's output back as a String
 fn check_output(cmd: &str, arguments: Vec<&str>) -> String
 {
-    let mut p = std::process::Command::new(cmd);
+    let mut p = Command::new(cmd);
     for arg in arguments.iter() {
         p.arg(arg);
     }
@@ -232,7 +86,7 @@ fn get_levels(source: &String) -> (f64, f64)
 }
 
 
-
+/*
 fn get_sinks() -> Vec<String>
 {
     // would be nice to have list comprehensions
@@ -251,6 +105,7 @@ fn get_sinks() -> Vec<String>
     }
     out
 }
+*/
 
 // TODO: duplex
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<SilenceChange>)
@@ -291,12 +146,12 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                                     (true, true) => {
                                         println!("{}: became silent! {}", level_source, rms);
                                         sine_pipeline.pause();
-                                        tx.send(SilenceChange{who: index, silent: true});
+                                        tx.send(SilenceChange{who: index, silent: true}).unwrap();
                                     },
                                     (false, true) => {
                                         println!("{}: became active! {}", level_source, rms);
                                         sine_pipeline.play();
-                                        tx.send(SilenceChange{who: index, silent: false});
+                                        tx.send(SilenceChange{who: index, silent: false}).unwrap();
                                     },
                                     (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
                                     (true, false) => {}, // println!("still silent"),
@@ -350,7 +205,8 @@ fn main() {
         format!("pulsesrc device={} ! pulsesink device={}", source, sink)
     }
 
-    let simplex_pipelines_str: Vec<String> = sources.iter().zip(sinks.iter()).map(|(a, b)| make_simplex_pipeline(a, b)).collect();
+    let source_n = sources.len();
+    let sink_n = sinks.len();
 
     gst::init();
 
@@ -362,15 +218,13 @@ fn main() {
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
     let (tx, rx) = channel();
 
-    for (orig_source, orig_sink) in sources.iter().zip(sinks) {
-        let simplex_pipeline_str: String = simplex_pipelines_str[i].clone();
+    for (orig_source, orig_sink) in sources.iter().zip(sinks.clone()) {
         let source = orig_source.clone();
         let sink = orig_sink.clone();
         let tx = tx.clone();
         let handle = thread::spawn(move || {
             let level_pipeline_str = make_level_pipeline(&source);
             let mut level_pipeline = gst::Pipeline::new_from_str(&level_pipeline_str).unwrap();
-            let mut simplex_pipeline = gst::Pipeline::new_from_str(&*simplex_pipeline_str).unwrap();
             level_pipeline.play();
             watch_level(i, &source, &sink, &mut level_pipeline, &tx);
         });
@@ -378,9 +232,28 @@ fn main() {
         handles.push(handle);
     }
 
-    let coordinator = thread::spawn(|| {
+    let coordinator = thread::spawn(move || {
+        // I have all those pipelines
+        // I keep track of non silent types and connect them directly
+        let mut source_to_sink: Vec<Vec<gst::Pipeline>> = Vec::new();
+
+        for source_i in 0..source_n {
+            source_to_sink.push(Vec::new());
+            for sink_i in 0..sink_n {
+                let s = make_simplex_pipeline(&sources[source_i], &sinks[sink_i]);
+                source_to_sink[source_i].push(gst::Pipeline::new_from_str(&*s).unwrap());
+            }
+        }
+
         for msg in rx {
             println!("got {:?}", msg);
+            for mut p in &mut source_to_sink[msg.who] {
+                if msg.silent {
+                    p.pause();
+                } else {
+                    p.play();
+                }
+            }
         }
     });
 
