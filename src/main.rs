@@ -18,13 +18,6 @@ mod gst_helpers;
 use gst_helpers::{gst_message_get_double, gst_message_get_name};
 
 
-fn parse_args() -> (String, String, String)
-{
-    let args = env::args().collect::<Vec<String>>();
-    (args[1].clone(), args[2].clone(), args[3].clone())
-}
-
-
 // run a subprocess and provide it's output back as a String
 fn check_output(cmd: &str, arguments: Vec<&str>) -> String
 {
@@ -86,28 +79,6 @@ fn get_levels(source: &String) -> (f64, f64)
 }
 
 
-/*
-fn get_sinks() -> Vec<String>
-{
-    // would be nice to have list comprehensions
-    let mut out = Vec::<String>::new();
-    for l in check_output("pactl", vec!["list", "short", "sinks"]).split("\n") {
-        let v = l.split("\t").collect::<Vec<&str>>();
-        let n = v.len();
-        if n < 2 {
-            continue;
-        }
-        let sink = String::from(v[1]);
-        if sink.contains("monitor") || !sink.contains("usb") {
-            continue;
-        }
-        out.push(sink);
-    }
-    out
-}
-*/
-
-// TODO: duplex
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<SilenceChange>)
 {
     let mut prev = true;
