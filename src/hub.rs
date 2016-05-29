@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 extern crate gst;
 use gst::Pipeline;
 use gst::ElementT;
@@ -12,6 +14,55 @@ pub struct SilenceChange {
 
 pub struct Hub {
     pipes: Vec<Vec<Pipeline>>,
+}
+
+
+type Voice = usize;
+
+
+// This is the logic - mut free for easy testing
+struct Egloorator {
+    silent: HashSet<Voice>,
+    single: Option<Voice>,
+    pairs: HashSet<(Voice, Voice)>
+}
+
+
+impl Egloorator {
+
+    fn new(start: Vec<bool>) -> Egloorator {
+        let silent = (0..start.len()).collect();
+        let mut er = Egloorator {
+            silent: silent,
+            single: None,
+            pairs: HashSet::<(Voice, Voice)>::new()
+        };
+        for (i, silent) in start.iter().enumerate() {
+            if !silent {
+                er = er.input(&SilenceChange {
+                    who: i,
+                    silent: false
+                });
+            }
+        }
+        er
+    }
+
+    fn input(self, change: &SilenceChange) -> Egloorator {
+        // TODO
+        self
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::Egloorator;
+
+    #[test]
+    fn test_sanity() {
+        // TODO
+    }
 }
 
 

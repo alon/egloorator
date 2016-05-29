@@ -16,6 +16,8 @@ mod silence;
 use silence::Silence;
 mod gst_helpers;
 use gst_helpers::{gst_message_get_double, gst_message_get_name};
+mod hub;
+use hub::{Hub, SilenceChange};
 
 
 // run a subprocess and provide it's output back as a String
@@ -144,13 +146,6 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
 }
 
 
-#[derive(Debug)]
-struct SilenceChange {
-    who: usize,
-    silent: bool,
-}
-
-
 fn main() {
     let sources = get_sources();
     let mut sinks = Vec::<String>::new();
@@ -214,15 +209,10 @@ fn main() {
             }
         }
 
+        let mut hub = Hub::new(source_to_sink);
+
         for msg in rx {
-            println!("got {:?}", msg);
-            for mut p in &mut source_to_sink[msg.who] {
-                if msg.silent {
-                    p.pause();
-                } else {
-                    p.play();
-                }
-            }
+            hub.input(&msg);
         }
     });
 
