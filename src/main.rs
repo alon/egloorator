@@ -167,13 +167,6 @@ fn main() {
         format!("pulsesrc device={} ! level ! fakesink", source)
     }
 
-    fn make_simplex_pipeline(source: &String, sink: &String) -> String {
-        format!("pulsesrc device={} ! pulsesink device={}", source, sink)
-    }
-
-    let source_n = sources.len();
-    let sink_n = sinks.len();
-
     gst::init();
 
 	let mut mainloop = gst::MainLoop::new();
@@ -197,19 +190,7 @@ fn main() {
     }
 
     let coordinator = thread::spawn(move || {
-        // I have all those pipelines
-        // I keep track of non silent types and connect them directly
-        let mut source_to_sink: Vec<Vec<gst::Pipeline>> = Vec::new();
-
-        for source_i in 0..source_n {
-            source_to_sink.push(Vec::new());
-            for sink_i in 0..sink_n {
-                let s = make_simplex_pipeline(&sources[source_i], &sinks[sink_i]);
-                source_to_sink[source_i].push(gst::Pipeline::new_from_str(&*s).unwrap());
-            }
-        }
-
-        let mut hub = Hub::new(source_to_sink);
+        let mut hub = Hub::new(&sources, &sinks);
 
         for msg in rx {
             hub.input(&msg);
