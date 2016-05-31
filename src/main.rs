@@ -50,7 +50,7 @@ fn get_sources() -> Vec<String>
         }
         let source = String::from(v[1]);
         if source.contains("monitor") || !source.contains("usb")
-            || !source.contains("Microsoft")
+            // || !source.contains("Microsoft")
             // || source != "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo"
             // || !source.contains("alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000")
         {
@@ -75,6 +75,9 @@ fn get_levels(source: &String) -> (f64, f64)
         return (-40f64, -45f64)
     }
     if source == "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo" {
+        return (-40f64, -45f64)
+    }
+    if source == "alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo" {
         return (-40f64, -45f64)
     }
     (-70f64, -65f64)
@@ -109,31 +112,30 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                 // level sends messages, look for rms, peak and decay doubles in the structure
                 match gst_message_get_name(&message) {
                     Some(the_name) => {
-                        match &*the_name {
-                            "level" => {
-                                let rms = gst_message_get_double(&message, "rms");
-                                //println!("{}: rms: {}", silence.cycle, rms);
-                                silence = silence.input(rms);
-                                let output = silence.output();
-                                match (output, output != prev) {
-                                    (true, true) => {
-                                        println!("{}: became silent! {}", level_source, rms);
-                                        sine_pipeline.pause();
-                                        tx.send(SilenceChange{who: index, silent: true}).unwrap();
-                                    },
-                                    (false, true) => {
-                                        println!("{}: became active! {}", level_source, rms);
-                                        sine_pipeline.play();
-                                        tx.send(SilenceChange{who: index, silent: false}).unwrap();
-                                    },
-                                    (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                    (true, false) => {}, // println!("still silent"),
-                                }
-                                prev = output;
+                        if &*the_name == "level" {
+                            let rms = gst_message_get_double(&message, "rms");
+                            silence = silence.input(rms);
+                            if message.src_name() == "level4" {
+                                println!("{}: {}: rms = {}", the_name, message.src_name(), rms);
                             }
-                            _ => {
-                                println!("got unknown structure name {}", the_name);
+                            let output = silence.output();
+                            match (output, output != prev) {
+                                (true, true) => {
+                                    println!("{}: became silent! {}", level_source, rms);
+                                    sine_pipeline.pause();
+                                    tx.send(SilenceChange{who: index, silent: true}).unwrap();
+                                },
+                                (false, true) => {
+                                    println!("{}: became active! {}", level_source, rms);
+                                    sine_pipeline.play();
+                                    tx.send(SilenceChange{who: index, silent: false}).unwrap();
+                                },
+                                (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
+                                (true, false) => {}, // println!("still silent"),
                             }
+                            prev = output;
+                        } else {
+                            println!("ignoring message {}", the_name);
                         }
                     }
                     None => {
@@ -153,12 +155,12 @@ fn main() {
         sinks.push(source.replace("input", "output").replace("mono", "stereo"));
     }
     // compile error: map(|s: String| s.replace("input", "output"));
-    println!("sources:");
+    println!("{} sources:", sources.len());
     for source in &sources {
         println!("{}", source);
     }
 
-    println!("sinks:");
+    println!("{} sinks:", sinks.len());
     for sink in &sinks {
         println!("{}", sink);
     }
@@ -193,6 +195,7 @@ fn main() {
         let mut hub = Hub::new(&sources, &sinks);
 
         for msg in rx {
+            println!("sending {:?} to hub", msg);
             hub.input(&msg);
         }
     });

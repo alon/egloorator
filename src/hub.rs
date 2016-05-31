@@ -66,11 +66,9 @@ impl Egloorator {
 
         if self.single == Some(who) {
             self.single = None;
-            println!("off single");
         } else {
             match self.pairs.get(&who) {
                 Some(&other) => {
-                    println!("disconnectiong {} and {}", who, other);
                     self.pairs.remove(&who);
                     self.pairs.remove(&other);
                     actions.push(Action::Disconnect (who, other));
@@ -97,7 +95,6 @@ impl Egloorator {
             },
             None => {
                 self.single = Some(who);
-                println!("setting {}. single = {:?}", who, self.single);
             }
         }
         actions
