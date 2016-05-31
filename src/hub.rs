@@ -184,8 +184,9 @@ impl Hub {
     // hub -> [play_bit(pipeline) for pipeline in pipelines]
     pub fn input(&mut self, msg: &SilenceChange)
     {
-        println!("got {:?}", msg);
+        //println!("got {:?}", msg);
         let actions = self.eg.input(msg);
+        println!("{:?}", self.eg);
 
         for action in actions {
             match action {
