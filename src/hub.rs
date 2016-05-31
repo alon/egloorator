@@ -87,6 +87,7 @@ impl Egloorator {
                     actions.push(Action::Connect (who, other));
                     self.pairs.insert(who, other);
                     self.pairs.insert(other, who);
+                    self.single = None;
                 }
             },
             None => {
