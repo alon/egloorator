@@ -22,6 +22,8 @@ struct Egloorator {
     pairs: HashMap<Voice, Voice>,
 }
 
+
+#[derive(Debug, PartialEq)]
 enum Action {
     Connect(Voice, Voice),
     Disconnect(Voice, Voice)
@@ -101,15 +103,17 @@ impl Egloorator {
 
 #[cfg(test)]
 mod tests {
-    use super::Egloorator;
+    use super::{Action, Egloorator, SilenceChange};
 
     #[test]
     fn test_sanity() {
         let start = vec![false; 6];
         let mut eg = Egloorator::new(start);
-        let actions;
-        (eg, actions) = eg.input(SilenceChange { who: 0, silent: false});
-        // TODO - assert
+
+        let actions = eg.input(&SilenceChange { who: 0, silent: false});
+        assert_eq!(actions, vec![]);
+        let actions = eg.input(&SilenceChange { who: 1, silent: false});
+        assert_eq!(actions, vec![Action::Connect(1, 0)]);
     }
 }
 
