@@ -66,12 +66,15 @@ impl Egloorator {
 
         if self.single == Some(who) {
             self.single = None;
+            println!("off single");
         } else {
             match self.pairs.get(&who) {
                 Some(&other) => {
+                    println!("disconnectiong {} and {}", who, other);
                     self.pairs.remove(&who);
                     self.pairs.remove(&other);
                     actions.push(Action::Disconnect (who, other));
+                    self.single = Some(other);
                 },
                 None => {
                 }
@@ -94,6 +97,7 @@ impl Egloorator {
             },
             None => {
                 self.single = Some(who);
+                println!("setting {}. single = {:?}", who, self.single);
             }
         }
         actions
@@ -107,12 +111,26 @@ mod tests {
 
     #[test]
     fn test_sanity() {
-        let start = vec![false; 6];
-        let mut eg = Egloorator::new(start);
+        let silence = vec![true; 6];
+        let mut eg = Egloorator::new(silence);
+        println!("\n{:?}", eg);
+        assert_eq!(eg.pairs.keys().len(), 0);
 
+        println!("0 talks");
         let actions = eg.input(&SilenceChange { who: 0, silent: false});
+        println!("{:?}", eg);
         assert_eq!(actions, vec![]);
+        println!("1 talks");
         let actions = eg.input(&SilenceChange { who: 1, silent: false});
+        println!("{:?}", eg);
+        assert_eq!(actions, vec![Action::Connect(1, 0)]);
+        println!("1 stops");
+        let actions = eg.input(&SilenceChange { who: 1, silent: true});
+        println!("{:?}", eg);
+        assert_eq!(actions, vec![Action::Disconnect(1, 0)]);
+        println!("1 talks");
+        let actions = eg.input(&SilenceChange { who: 1, silent: false});
+        println!("{:?}", eg);
         assert_eq!(actions, vec![Action::Connect(1, 0)]);
     }
 }
@@ -147,7 +165,7 @@ impl Hub {
             pipes: pipes,
             sources: sources.clone(),
             sinks: sinks.clone(),
-            eg: Egloorator::new(vec![false; sources.len()]),
+            eg: Egloorator::new(vec![true; sources.len()]),
         }
     }
 
