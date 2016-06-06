@@ -20,6 +20,13 @@ mod hub;
 use hub::{Hub, SilenceChange};
 
 
+#[derive(Debug)]
+enum Message {
+    Update(SilenceChange),
+    Quit
+}
+
+
 // run a subprocess and provide it's output back as a String
 fn check_output(cmd: &str, arguments: Vec<&str>) -> String
 {
@@ -86,7 +93,7 @@ fn get_levels(source: &String) -> (f64, f64)
 static silent_period: i64 = 10; // 1 seconds
 static average_period: i64 = 4410; // 0.1 seconds
 
-fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<SilenceChange>)
+fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<Message>)
 {
     let mut prev = true;
     let (s2a, a2s) = get_levels(&level_source);
@@ -108,6 +115,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
             }
             gst::Message::Eos(ref msg) => {
                 println!("eos received quiting");
+                tx.send(Message::Quit);
                 break;
             }
             _ => {
@@ -123,15 +131,15 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                                 (true, true) => {
                                     println!("{}: became silent! {}", level_source, rms);
                                     sine_pipeline.pause();
-                                    tx.send(SilenceChange{who: index, silent: true}).unwrap();
+                                    tx.send(Message::Update(SilenceChange{who: index, silent: true})).unwrap();
                                 },
                                 (false, true) => {
                                     println!("{}: became active! {}", level_source, rms);
                                     sine_pipeline.play();
-                                    tx.send(SilenceChange{who: index, silent: false}).unwrap();
+                                    tx.send(Message::Update(SilenceChange{who: index, silent: false})).unwrap();
                                 },
-                                (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                (true, false) => {}, // println!("still silent"),
+                                (false, false) => println!("still active, {}, silent time of {}", rms, silence.silent_current),
+                                (true, false) => println!("still silent"),
                             }
                             prev = output;
                         } else {
@@ -222,7 +230,10 @@ fn main() {
 
         for msg in rx {
             println!("sending {:?} to hub", msg);
-            hub.input(&msg);
+            match msg {
+                Message::Update(silence_change) => hub.input(&silence_change),
+                Message::Quit => break,
+            }
         }
     });
 

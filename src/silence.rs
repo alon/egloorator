@@ -4,7 +4,7 @@ pub struct Silence {
 
     // state changes per sample
     avg_rms: f64, // running average computation
-    silent_current: i64, // time there has been silence
+    pub silent_current: i64, // time there has been silence
 
     // parameters (constant since construction)
     silent_period: i64,
