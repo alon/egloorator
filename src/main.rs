@@ -159,6 +159,8 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
 fn main() {
     let mut verbose = false;
     let mut filenames: Vec<String> = vec![];
+    let mut s2a: f64 = 0.0;
+    let mut a2s: f64 = 0.0;
 
     let mut name = "World".to_string();
     {  // this block limits scope of borrows by ap.refer() method
@@ -168,6 +170,8 @@ fn main() {
             .add_option(&["-v", "--verbose"], StoreTrue,
             "Be verbose");
         ap.refer(&mut filenames).add_option(&["-f", "--filenames"], Collect, "Filenames");
+        ap.refer(&mut s2a).add_option(&["-s", "--s2a"], Store, "Silent to Active");
+        ap.refer(&mut a2s).add_option(&["-a", "--a2s"], Store, "Active to Silent");
         ap.parse_args_or_exit();
     }
 
