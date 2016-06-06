@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+import argparse
 import os
 import sys
 from subprocess import check_output
@@ -11,8 +12,6 @@ usb_sources=[x for x in sources if 'usb' in x]
 if False and len(usb_sources) != 1:
     print("must be run with one headset connected")
     raise SystemExit
-
-print("#sources {}".format(len(sources)))
 
 save_wav = False
 
@@ -33,12 +32,19 @@ tofile = {
     'alsa_input.pci-0000_00_1b.0.analog-stereo': 'internal',
 }
 
-assert len(sys.argv) == 2
-dirname_suffix = sys.argv[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('-f', '--filter-sources')
+parser.add_argument('-d', '--dirname-suffix', required=True)
+args = parser.parse_args()
+dirname_suffix = args.dirname_suffix
 
 dirname = '{}-{}'.format(datetime.now().strftime('%Y%m%d-%H%M'), dirname_suffix)
 assert not os.path.exists(dirname)
 os.mkdir(dirname)
+
+sources = sources if args.filter_sources is None else [x for x in sources if args.filter_sources in x.lower()]
+print("#sources {}".format(len(sources)))
+
 
 used_names = set()
 pipes = []
