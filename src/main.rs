@@ -138,8 +138,8 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                                     sine_pipeline.play();
                                     tx.send(Message::Update(SilenceChange{who: index, silent: false})).unwrap();
                                 },
-                                (false, false) => println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                (true, false) => println!("still silent"),
+                                (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
+                                (true, false) => {}, // println!("still silent"),
                             }
                             prev = output;
                         } else {
