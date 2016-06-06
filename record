@@ -14,6 +14,15 @@ if False and len(usb_sources) != 1:
 
 print("#sources {}".format(len(sources)))
 
+save_wav = False
+
+if save_wav:
+    last_stage = 'wavenc'
+    extension = 'wav'
+else:
+    last_stage = 'audioconvert ! vorbisenc quality=0.8 ! oggmux'
+    extension = 'ogg'
+
 tofile = {
     'alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo': 'generic',
     'alsa_input.usb-Logitech_Inc._Logitech_USB_Headset_H340-00.analog-stereo': 'logi-h340',
@@ -34,7 +43,7 @@ os.mkdir(dirname)
 used_names = set()
 pipes = []
 def make_name(device):
-    return '{}/{}.wav'.format(dirname, device)
+    return '{}/{}.{}'.format(dirname, device, extension)
 for source in sources:
     device = tofile.get(source, source)
     filename = make_name(device)
@@ -44,7 +53,7 @@ for source in sources:
         ind += 1
     used_names.add(filename)
     # TODO - execve
-    pipes.append('pulsesrc device={} ! wavenc ! filesink "location={}"'.format(source, filename))
+    pipes.append('pulsesrc device={} ! {} ! filesink "location={}"'.format(source, last_stage, filename))
 cmdline = 'gst-launch-1.0 {}'.format(' '.join(pipes))
 print("cmdline: {}".format(repr(cmdline)))
 os.system(cmdline)

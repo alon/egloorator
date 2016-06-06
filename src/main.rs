@@ -66,7 +66,7 @@ fn get_sources() -> Vec<String>
 fn get_levels(source: &String) -> (f64, f64)
 {
     if source.contains("Logitech") {
-        return (-40f64, -41f64);
+        return (-30f64, -25f64);
     }
     if source == "alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2" {
         return (-40f64, -45f64)
@@ -80,7 +80,7 @@ fn get_levels(source: &String) -> (f64, f64)
     if source == "alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo" {
         return (-40f64, -45f64)
     }
-    (-70f64, -65f64)
+    (-25f64, -20f64)
 }
 
 
@@ -89,26 +89,26 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
     let mut prev = true;
     let (s2a, a2s) = get_levels(&level_source);
     let mut silence = Silence::new(s2a, a2s, 10, 5);
-	let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
-	let level_bus_receiver = level_bus.receiver();
+    let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
+    let level_bus_receiver = level_bus.receiver();
 
     let sine_str = format!("ladspasrc-sine-so-sine-fcac amplitude=0.02 ! pulsesink device={}", sink);
     let mut sine_pipeline = gst::Pipeline::new_from_str(sine_str.as_ref()).unwrap();
 
-	for message in level_bus_receiver.iter() {
-		match message.parse() {
-			gst::Message::StateChangedParsed{ref msg, ref old, ref new, ref pending} => {
-				println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
-			}
-			gst::Message::ErrorParsed{ref msg, ref error, ref debug} => {
-				println!("error msg from element `{}`: {}, quitting", message.src_name(), error.message());
-				break;
-			}
-			gst::Message::Eos(ref msg) => {
-				println!("eos received quiting");
-				break;
-			}
-			_ => {
+    for message in level_bus_receiver.iter() {
+        match message.parse() {
+            gst::Message::StateChangedParsed{ref msg, ref old, ref new, ref pending} => {
+                println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
+            }
+            gst::Message::ErrorParsed{ref msg, ref error, ref debug} => {
+                println!("error msg from element `{}`: {}, quitting", message.src_name(), error.message());
+                break;
+            }
+            gst::Message::Eos(ref msg) => {
+                println!("eos received quiting");
+                break;
+            }
+            _ => {
                 // level sends messages, look for rms, peak and decay doubles in the structure
                 match gst_message_get_name(&message) {
                     Some(the_name) => {
@@ -142,9 +142,9 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                         println!("msg of type `{}` from element `{}`", message.type_name(), message.src_name());
                     }
                 }
-			}
-		}
-	}
+            }
+        }
+    }
 }
 
 
@@ -171,9 +171,9 @@ fn main() {
 
     gst::init();
 
-	let mut mainloop = gst::MainLoop::new();
+    let mut mainloop = gst::MainLoop::new();
 
-	mainloop.spawn();
+    mainloop.spawn();
 
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
     let (tx, rx) = channel();
@@ -208,5 +208,5 @@ fn main() {
 
     println!("done");
 
-	mainloop.quit();
+    mainloop.quit();
 }
