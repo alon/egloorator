@@ -97,7 +97,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
 {
     let mut prev = true;
     let (s2a, a2s) = get_levels(&level_source);
-    let mut silence = Silence::new(s2a, a2s, 10, 5);
+    let mut silence = Silence::new(s2a, a2s, silent_period, average_period);
     let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
     let level_bus_receiver = level_bus.receiver();
 
