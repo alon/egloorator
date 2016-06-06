@@ -142,7 +142,7 @@ pub struct Hub {
 
 
 fn make_simplex_pipeline(source: &String, sink: &String) -> String {
-    format!("pulsesrc device={} ! pulsesink device={}", source, sink)
+    format!("{} ! {}", source, sink)
 }
 
 

@@ -9,7 +9,7 @@ use std::thread;
 use std::sync::mpsc::{channel, Sender};
 
 use gst::ElementT;
-//use argparse::ArgumentParser;
+use argparse::{ArgumentParser, StoreTrue, Store, Collect};
 //use gtk::prelude::*;
 
 mod silence;
@@ -149,11 +149,33 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
 
 
 fn main() {
-    let sources = get_sources();
-    let mut sinks = Vec::<String>::new();
-    for source in &sources {
-        sinks.push(source.replace("input", "output").replace("mono", "stereo"));
+    let mut verbose = false;
+    let mut filenames: Vec<String> = vec![];
+
+    let mut name = "World".to_string();
+    {  // this block limits scope of borrows by ap.refer() method
+        let mut ap = ArgumentParser::new();
+        ap.set_description("Egloorator");
+        ap.refer(&mut verbose)
+            .add_option(&["-v", "--verbose"], StoreTrue,
+            "Be verbose");
+        ap.refer(&mut filenames).add_option(&["-f", "--filenames"], Collect, "Filenames");
+        ap.parse_args_or_exit();
     }
+
+
+    let source_devices = get_sources();
+    let sources: Vec<String> = match filenames.len() {
+        0 => source_devices.iter().map(|s| format!("pulsesrc device={}", s)).collect(),
+        _ => filenames.iter().map(|f| format!("filesrc location={} ! wavparse", f)).collect(),
+    };
+    let mut sinks: Vec<String> =
+        if filenames.len() == 0 {
+            sources.iter().map(|s: &String| format!("pulsesink device={}",
+                                     s.replace("input", "output").replace("mono", "stereo"))).collect()
+        } else {
+            (0..(filenames.len())).map(|i| format!("output_{}.wav", i)).collect()
+        };
     // compile error: map(|s: String| s.replace("input", "output"));
     println!("{} sources:", sources.len());
     for source in &sources {
@@ -165,8 +187,12 @@ fn main() {
         println!("{}", sink);
     }
 
+    fn source_pipelines() {
+
+    }
+
     fn make_level_pipeline(source: &String) -> String {
-        format!("pulsesrc device={} ! level ! fakesink", source)
+        format!("{} ! level ! fakesink", source)
     }
 
     gst::init();
