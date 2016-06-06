@@ -1,0 +1,50 @@
+#!/bin/env python3
+
+import os
+import sys
+from subprocess import check_output
+from datetime import datetime
+
+sources = [l.strip() for l in check_output('eg-sources').decode().split('\n') if len(l.strip()) > 0]
+usb_sources=[x for x in sources if 'usb' in x]
+
+if False and len(usb_sources) != 1:
+    print("must be run with one headset connected")
+    raise SystemExit
+
+print("#sources {}".format(len(sources)))
+
+tofile = {
+    'alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo': 'generic',
+    'alsa_input.usb-Logitech_Inc._Logitech_USB_Headset_H340-00.analog-stereo': 'logi-h340',
+    'alsa_input.usb-Logitech_Logitech_USB_Headset-00.analog-mono': 'logi-h390',
+    'alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono': 'ms-lx-3000',
+    'alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2': 'ms-lx-3000-2nd',
+    'alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo': 'ms-lx-4000',
+    'alsa_input.pci-0000_00_1b.0.analog-stereo': 'internal',
+}
+
+assert len(sys.argv) == 2
+dirname_suffix = sys.argv[1]
+
+dirname = '{}-{}'.format(datetime.now().strftime('%Y%m%d-%H%M'), dirname_suffix)
+assert not os.path.exists(dirname)
+os.mkdir(dirname)
+
+used_names = set()
+pipes = []
+def make_name(device):
+    return '{}/{}.wav'.format(dirname, device)
+for source in sources:
+    device = tofile.get(source, source)
+    filename = make_name(device)
+    ind = 0
+    while filename in used_names:
+        filename = make_name('{}_{}'.format(prefix, ind))
+        ind += 1
+    used_names.add(filename)
+    # TODO - execve
+    pipes.append('pulsesrc device={} ! wavenc ! filesink "location={}"'.format(source, filename))
+cmdline = 'gst-launch-1.0 {}'.format(' '.join(pipes))
+print("cmdline: {}".format(repr(cmdline)))
+os.system(cmdline)
