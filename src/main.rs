@@ -91,7 +91,7 @@ fn get_levels(source: &String) -> (f64, f64)
 }
 
 static silent_period: i64 = 10; // 1 seconds
-static average_period: i64 = 4410; // 0.1 seconds
+static average_period: i64 = 1; // no averaging - let level element do that
 
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<Message>)
 {
