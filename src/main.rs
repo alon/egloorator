@@ -78,11 +78,13 @@ fn get_levels(source: &String) -> (f64, f64)
         return (-40f64, -45f64)
     }
     if source == "alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo" {
-        return (-40f64, -45f64)
+        return (-56f64, -58f64)
     }
     (-25f64, -20f64)
 }
 
+static silent_period: i64 = 10; // 1 seconds
+static average_period: i64 = 4410; // 0.1 seconds
 
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<SilenceChange>)
 {
@@ -115,9 +117,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                         if &*the_name == "level" {
                             let rms = gst_message_get_double(&message, "rms");
                             silence = silence.input(rms);
-                            if message.src_name() == "level4" {
-                                println!("{}: {}: rms = {}", the_name, message.src_name(), rms);
-                            }
+                            println!("{}: {}: rms = {}", the_name, message.src_name(), rms);
                             let output = silence.output();
                             match (output, output != prev) {
                                 (true, true) => {
