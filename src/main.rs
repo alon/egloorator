@@ -75,19 +75,19 @@ fn get_levels(source: &String) -> (f64, f64)
     if source.contains("Logitech") {
         return (-30f64, -25f64);
     }
-    if source == "alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2" {
+    if source == "pulsesrc device=alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2" {
         return (-40f64, -45f64)
     }
-    if source == "alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono" {
+    if source == "pulsesrc device=alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono" {
         return (-40f64, -45f64)
     }
-    if source == "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo" {
+    if source == "pulsesrc device=alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo" {
         return (-40f64, -45f64)
     }
-    if source == "alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo" {
+    if source == "pulsesrc device=alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo" {
         return (-56f64, -58f64)
     }
-    (-25f64, -20f64)
+    (-56f64, -58f64)
 }
 
 static silent_period: i64 = 10; // 1 seconds
