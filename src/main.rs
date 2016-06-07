@@ -50,11 +50,12 @@ fn check_output(cmd: &str, arguments: Vec<&str>) -> String
 }
 
 
-fn get_sources(filter_sources: &String, filter_not_sources:&String) -> Vec<String>
+fn get_sources(filter_sources: Option<&String>, filter_not_sources:Option<&String>) -> Vec<String>
 {
     // would be nice to have list comprehensions
     let mut out = Vec::<String>::new();
-    println!("filter not sources {}", filter_not_sources);
+    println!("filter sources:      {:?}", filter_sources);
+    println!("filter not sources:  {:?}", filter_not_sources);
     for l in check_output("pactl", vec!["list", "short", "sources"]).split("\n") {
         let v = l.split("\t").collect::<Vec<&str>>();
         let n = v.len();
@@ -69,11 +70,22 @@ fn get_sources(filter_sources: &String, filter_not_sources:&String) -> Vec<Strin
         {
             continue;
         }
-        if !source.contains(filter_sources) {
-            continue;
-        }
-        if filter_not_sources.len() > 0 && source.contains(filter_not_sources) {
-            continue;
+        match filter_sources {
+            None => {},
+            Some(s) => {
+                if !source.contains(s) {
+                    continue;
+                }
+            }
+        };
+
+        match filter_not_sources {
+            None => {},
+            Some(s) => {
+                if source.contains(s) {
+                    continue;
+                }
+            }
         }
         out.push(source);
     }
@@ -167,13 +179,13 @@ fn main() {
         ap.refer(&mut filenames).add_option(&["-f", "--filenames"], Collect, "Filenames");
         ap.refer(&mut s2a).add_option(&["-s", "--s2a"], Store, "Silent to Active");
         ap.refer(&mut a2s).add_option(&["-a", "--a2s"], Store, "Active to Silent");
-        ap.refer(&mut filter_sources).add_option(&["-f", "--filter-sources"], Store, "Filter sources");
-        ap.refer(&mut filter_not_sources).add_option(&["-n", "--filter-not-sources"], Store, "Filter sources");
+        ap.refer(&mut filter_sources).add_option(&["-i", "--filter-sources"], Store, "Filter sources");
+        ap.refer(&mut filter_not_sources).add_option(&["-x", "--filter-not-sources"], Store, "Filter sources");
         ap.parse_args_or_exit();
     }
 
 
-    let source_devices = get_sources(&filter_sources, &filter_not_sources);
+    let source_devices = get_sources(if filter_sources.len() == 0 { None } else { Some(&filter_sources) }, if filter_not_sources.len() == 0 { None } else { Some(&filter_not_sources) });
     let sources: Vec<String> = match filenames.len() {
         0 => source_devices.iter().map(|s| format!("pulsesrc device={}", s)).collect(),
         _ => filenames.iter().map(|f| format!("filesrc location={} ! wavparse", f)).collect(),
