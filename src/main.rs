@@ -45,10 +45,11 @@ fn check_output(cmd: &str, arguments: Vec<&str>) -> String
 }
 
 
-fn get_sources() -> Vec<String>
+fn get_sources(filter_sources: &String, filter_not_sources:&String) -> Vec<String>
 {
     // would be nice to have list comprehensions
     let mut out = Vec::<String>::new();
+    println!("filter not sources {}", filter_not_sources);
     for l in check_output("pactl", vec!["list", "short", "sources"]).split("\n") {
         let v = l.split("\t").collect::<Vec<&str>>();
         let n = v.len();
@@ -61,6 +62,12 @@ fn get_sources() -> Vec<String>
             // || source != "alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo"
             // || !source.contains("alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000")
         {
+            continue;
+        }
+        if !source.contains(filter_sources) {
+            continue;
+        }
+        if filter_not_sources.len() > 0 && source.contains(filter_not_sources) {
             continue;
         }
         out.push(source);
@@ -161,6 +168,8 @@ fn main() {
     let mut filenames: Vec<String> = vec![];
     let mut s2a: f64 = 0.0;
     let mut a2s: f64 = 0.0;
+    let mut filter_sources: String = format!("");
+    let mut filter_not_sources: String = format!("");
 
     let mut name = "World".to_string();
     {  // this block limits scope of borrows by ap.refer() method
@@ -172,11 +181,13 @@ fn main() {
         ap.refer(&mut filenames).add_option(&["-f", "--filenames"], Collect, "Filenames");
         ap.refer(&mut s2a).add_option(&["-s", "--s2a"], Store, "Silent to Active");
         ap.refer(&mut a2s).add_option(&["-a", "--a2s"], Store, "Active to Silent");
+        ap.refer(&mut filter_sources).add_option(&["-f", "--filter-sources"], Store, "Filter sources");
+        ap.refer(&mut filter_not_sources).add_option(&["-n", "--filter-not-sources"], Store, "Filter sources");
         ap.parse_args_or_exit();
     }
 
 
-    let source_devices = get_sources();
+    let source_devices = get_sources(&filter_sources, &filter_not_sources);
     let sources: Vec<String> = match filenames.len() {
         0 => source_devices.iter().map(|s| format!("pulsesrc device={}", s)).collect(),
         _ => filenames.iter().map(|f| format!("filesrc location={} ! wavparse", f)).collect(),
