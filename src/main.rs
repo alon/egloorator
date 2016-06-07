@@ -109,6 +109,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
 {
     let mut prev = true;
     let (s2a, a2s) = get_levels(&level_source);
+    println!("{}: s2a {}, a2s {}", level_source, s2a, a2s);
     let mut silence = Silence::new(s2a, a2s, silent_period, average_period);
     let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
     let level_bus_receiver = level_bus.receiver();
@@ -119,10 +120,10 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
     for message in level_bus_receiver.iter() {
         match message.parse() {
             gst::Message::StateChangedParsed{ref msg, ref old, ref new, ref pending} => {
-                println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
+                //println!("element `{}` changed from {:?} to {:?}", message.src_name(), old, new);
             }
             gst::Message::ErrorParsed{ref msg, ref error, ref debug} => {
-                println!("error msg from element `{}`: {}, quitting", message.src_name(), error.message());
+                //println!("error msg from element `{}`: {}, quitting", message.src_name(), error.message());
                 break;
             }
             gst::Message::Eos(ref msg) => {
@@ -155,7 +156,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                             }
                             prev = output;
                         } else {
-                            println!("ignoring message {}", the_name);
+                            //println!("ignoring message {}", the_name);
                         }
                     }
                     None => {
