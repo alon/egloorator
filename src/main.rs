@@ -93,7 +93,7 @@ fn get_sources(filter_sources: Option<&String>, filter_not_sources:Option<&Strin
 }
 
 
-static silent_period: i64 = 10; // 1 seconds
+static silent_period: i64 = 10 * 30; // 1 seconds
 static average_period: i64 = 1; // no averaging - let level element do that
 
 
