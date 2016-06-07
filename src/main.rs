@@ -14,10 +14,15 @@ use argparse::{ArgumentParser, StoreTrue, Store, Collect};
 
 mod silence;
 use silence::Silence;
+
 mod gst_helpers;
 use gst_helpers::{gst_message_get_double, gst_message_get_name};
+
 mod hub;
 use hub::{Hub, SilenceChange};
+
+mod levels;
+use levels::{get_levels, get_amplification};
 
 
 #[derive(Debug)]
@@ -76,34 +81,9 @@ fn get_sources(filter_sources: &String, filter_not_sources:&String) -> Vec<Strin
 }
 
 
-// return S->A level, A->S level (larger first)
-fn get_levels(source: &String) -> (f64, f64)
-{
-    if source.contains("alsa_input.usb-Logitech_Inc._Logitech_USB_Headset_H340-00.analog-stereo") {
-        return (-33f64, -35f64);
-    }
-    if source.contains("alsa_input.usb-Logitech_Logitech_USB_Headset-00.analog-mono") {
-        return (-55f64, -57f64);
-    }
-    // TODO - better identifier. serial of card?
-    if source == "pulsesrc device=alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono.2" {
-        return (-32f64, -34f64)
-    }
-    if source.contains("alsa_input.usb-C-Media_Electronics_Inc._Microsoft_LifeChat_LX-3000-00.analog-mono") {
-        return (-54f64, -56f64)
-    }
-    if source == "pulsesrc device=alsa_input.usb-Microsoft_Microsoft_LifeChat_LX-4000-00.analog-stereo" {
-        return (-40f64, -45f64)
-    }
-    if source.contains("alsa_input.usb-Generic_USB_Ear-Microphone_0000000001-00.analog-stereo") {
-        return (-50f64, -52f64)
-    }
-    println!("matching default source");
-    (-56f64, -58f64)
-}
-
 static silent_period: i64 = 10; // 1 seconds
 static average_period: i64 = 1; // no averaging - let level element do that
+
 
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<Message>)
 {
