@@ -106,8 +106,12 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
     let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
     let level_bus_receiver = level_bus.receiver();
 
-    let sine_str = format!("ladspasrc-sine-so-sine-fcac amplitude=0.02 ! pulsesink device={}", sink);
-    let mut sine_pipeline = gst::Pipeline::new_from_str(sine_str.as_ref()).unwrap();
+    let play_sine_on_activity = sink.starts_with("pulsesink");
+    let mut sine_pipeline = gst::Pipeline::new_from_str("fakesrc ! fakesink").unwrap();
+    if play_sine_on_activity {
+        let sine_str = format!("ladspasrc-sine-so-sine-fcac amplitude=0.02 ! pulsesink device={}", sink);
+        sine_pipeline = gst::Pipeline::new_from_str(sine_str.as_ref()).unwrap();
+    }
 
     for message in level_bus_receiver.iter() {
         match message.parse() {
@@ -135,12 +139,16 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                             match (output, output != prev) {
                                 (true, true) => {
                                     println!("{}: became silent! {}", level_source, rms);
-                                    sine_pipeline.pause();
+                                    if play_sine_on_activity {
+                                        sine_pipeline.pause();
+                                    }
                                     tx.send(Message::Update(SilenceChange{who: index, silent: true})).unwrap();
                                 },
                                 (false, true) => {
                                     println!("{}: became active! {}", level_source, rms);
-                                    sine_pipeline.play();
+                                    if play_sine_on_activity {
+                                        sine_pipeline.play();
+                                    }
                                     tx.send(Message::Update(SilenceChange{who: index, silent: false})).unwrap();
                                 },
                                 (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
@@ -195,7 +203,7 @@ fn main() {
             sources.iter().map(|s: &String| format!("pulsesink device={}",
                                      s.replace("input", "output").replace("mono", "stereo"))).collect()
         } else {
-            (0..(filenames.len())).map(|i| format!("output_{}.wav", i)).collect()
+            (0..(filenames.len())).map(|i| format!("filesink location=output_{}.wav", i)).collect()
         };
     // compile error: map(|s: String| s.replace("input", "output"));
     println!("{} sources:", sources.len());
