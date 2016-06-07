@@ -4,6 +4,7 @@ extern crate gst;
 use gst::Pipeline;
 use gst::ElementT;
 
+use levels::get_amplification;
 
 pub type Voice = usize;
 
@@ -142,7 +143,8 @@ pub struct Hub {
 
 
 fn make_simplex_pipeline(source: &String, sink: &String) -> String {
-    format!("{} ! {}", source, sink)
+    let amplification = get_amplification(source);
+    format!("{} ! audioamplify amplification={} ! {}", source, amplification, sink)
 }
 
 
