@@ -107,6 +107,7 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
     let level_bus_receiver = level_bus.receiver();
 
     let play_sine_on_activity = sink.starts_with("pulsesink");
+    let mut sine_timeout_counter = 0u64;
     let mut sine_pipeline = gst::Pipeline::new_from_str("fakesrc ! fakesink").unwrap();
     if play_sine_on_activity {
         let sine_str = format!("ladspasrc-sine-so-sine-fcac amplitude=0.02 ! pulsesink device={}", sink);
@@ -148,11 +149,24 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                                     println!("{}: became active! {}", level_source, rms);
                                     if play_sine_on_activity {
                                         sine_pipeline.play();
+                                        sine_timeout_counter = 5u64; // hardcoded, should be relative to level period, currently 0.1s
                                     }
                                     tx.send(Message::Update(SilenceChange{who: index, silent: false})).unwrap();
                                 },
-                                (false, false) => {}, // println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                (true, false) => {}, // println!("still silent"),
+                                (false, false) => {
+                                    if play_sine_on_activity {
+                                        if sine_timeout_counter == 0 {
+                                            sine_pipeline.pause();
+                                        }
+                                        if sine_timeout_counter > 0 {
+                                            sine_timeout_counter -= 1;
+                                        }
+                                    }
+                                    // println!("still active, {}, silent time of {}", rms, silence.silent_current),
+                                },
+                                (true, false) => {
+                                    // println!("still silent"),
+                                },
                             }
                             prev = output;
                         } else {
