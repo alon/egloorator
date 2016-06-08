@@ -93,8 +93,10 @@ fn get_sources(filter_sources: Option<&String>, filter_not_sources:Option<&Strin
 }
 
 
+const level_interval: f64 = 0.1f64;
 static silent_period: i64 = 10 * 30; // 1 seconds
 static average_period: i64 = 1; // no averaging - let level element do that
+static mut sine_timeout: u64 = (1.0f64 / level_interval) as u64; // 0 for no timeout, i.e. debug mode
 
 
 fn watch_level(index: usize, level_source: &String, sink: &String, level_pipeline: &mut gst::Pipeline, tx: &Sender<Message>)
@@ -105,6 +107,10 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
     let mut silence = Silence::new(s2a, a2s, silent_period, average_period);
     let mut level_bus = level_pipeline.bus().expect("Couldn't get bus from pipeline");
     let level_bus_receiver = level_bus.receiver();
+
+    let sine_timeout_max: u64 = unsafe {
+        sine_timeout
+    };
 
     let play_sine_on_activity = sink.starts_with("pulsesink");
     let mut sine_timeout_counter = 0u64;
@@ -153,19 +159,15 @@ fn watch_level(index: usize, level_source: &String, sink: &String, level_pipelin
                                     }
                                     tx.send(Message::Update(SilenceChange{who: index, silent: false})).unwrap();
                                 },
-                                (false, false) => {
+                                _ => {
                                     if play_sine_on_activity {
-                                        if sine_timeout_counter == 0 {
+                                        if sine_timeout_max != 0 && sine_timeout_counter == 0 {
                                             sine_pipeline.pause();
                                         }
                                         if sine_timeout_counter > 0 {
                                             sine_timeout_counter -= 1;
                                         }
                                     }
-                                    // println!("still active, {}, silent time of {}", rms, silence.silent_current),
-                                },
-                                (true, false) => {
-                                    // println!("still silent"),
                                 },
                             }
                             prev = output;
@@ -190,8 +192,8 @@ fn main() {
     let mut a2s: f64 = 0.0;
     let mut filter_sources: String = format!("");
     let mut filter_not_sources: String = format!("");
+    let mut debug = false;
 
-    let mut name = "World".to_string();
     {  // this block limits scope of borrows by ap.refer() method
         let mut ap = ArgumentParser::new();
         ap.set_description("Egloorator");
@@ -203,9 +205,20 @@ fn main() {
         ap.refer(&mut a2s).add_option(&["-a", "--a2s"], Store, "Active to Silent");
         ap.refer(&mut filter_sources).add_option(&["-i", "--filter-sources"], Store, "Filter sources");
         ap.refer(&mut filter_not_sources).add_option(&["-x", "--filter-not-sources"], Store, "Filter sources");
+        ap.refer(&mut debug).add_option(&["-d", "--debug"], StoreTrue, "debug (turn on sine sound)");
         ap.parse_args_or_exit();
     }
 
+    if debug {
+        unsafe {
+            sine_timeout = 0u64;
+        }
+    }
+
+    println!("using level.interval of {}", level_interval);
+    unsafe {
+        println!("using sine timeout of {}", sine_timeout);
+    }
 
     let source_devices = get_sources(if filter_sources.len() == 0 { None } else { Some(&filter_sources) }, if filter_not_sources.len() == 0 { None } else { Some(&filter_not_sources) });
     let sources: Vec<String> = match filenames.len() {
@@ -235,7 +248,7 @@ fn main() {
     }
 
     fn make_level_pipeline(source: &String) -> String {
-        format!("{} ! level ! fakesink", source)
+        format!("{} ! level interval={} ! fakesink", source, level_interval)
     }
 
     gst::init();
